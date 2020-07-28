@@ -1,13 +1,16 @@
+#include "PCH.h"
+
 #include "WordRAM.h"
 
-#include <iostream>
-#include <cassert>
-#include <random>
+#if CPU_WORD_LENGTH == 64
+static constexpr Int DIVCWL = 6;
+static constexpr Int MODCWL = 0x3f;
+#endif
 
 WordRAM::CompressedArray::CompressedArray(Int size, Int wordLength) : _size(size), _wordLength(wordLength) {
 	assert(size > 0); assert(wordLength > 0);
 	if (wordLength > CPU_WORD_LENGTH) {
-		std::cerr << "Error! Word length for compressed arrays should be less than the word length of processors." << std::endl;
+		assertError("Error! Word length for compressed arrays should be less than the word length of processors.");
 	}
 
 	_arraySize = size * wordLength;
@@ -20,16 +23,16 @@ WordRAM::CompressedArray::~CompressedArray() {
 	free(_d);
 }
 
-size_t WordRAM::CompressedArray::totalSize() {
+Int WordRAM::CompressedArray::totalSize() {
 	return _arraySize + sizeof(*this);
 }
 
 Int WordRAM::CompressedArray::get(Int i) {
 	auto begin = i * _wordLength, end = begin + _wordLength - 1;
-	auto beginIdx = begin / CPU_WORD_LENGTH, endIdx = end / CPU_WORD_LENGTH;
+	auto beginIdx = begin >> DIVCWL, endIdx = end >> DIVCWL;
 	if (beginIdx == endIdx) {
 		// The item is contained by one slot
-		begin %= CPU_WORD_LENGTH;
+		begin &= MODCWL;
 		Int r = _d[beginIdx];
 		r <<= begin;
 		r >>= (CPU_WORD_LENGTH - _wordLength);
@@ -37,7 +40,7 @@ Int WordRAM::CompressedArray::get(Int i) {
 	} else {
 		assert(beginIdx + 1 == endIdx);
 		// The item is located in two adjacent slots
-		begin %= CPU_WORD_LENGTH; end %= CPU_WORD_LENGTH;
+		begin &= MODCWL; end &= MODCWL;
 		Int r0 = _d[beginIdx], r1 = _d[endIdx];
 		r0 <<= begin; r0 >>= (CPU_WORD_LENGTH - _wordLength);
 		r1 >>= (CPU_WORD_LENGTH - end - 1);
@@ -47,10 +50,10 @@ Int WordRAM::CompressedArray::get(Int i) {
 
 void WordRAM::CompressedArray::set(Int i, Int x) {
 	auto begin = i * _wordLength, end = begin + _wordLength - 1;
-	auto beginIdx = begin / CPU_WORD_LENGTH, endIdx = end / CPU_WORD_LENGTH;
+	auto beginIdx = begin >> DIVCWL, endIdx = end >> DIVCWL;
 	if (beginIdx == endIdx) {
 		// The item is contained by one slot
-		begin %= CPU_WORD_LENGTH;
+		begin &= MODCWL;
 		// Clear the bits
 		Int mask = 0; mask = ~mask;
 		mask <<= (CPU_WORD_LENGTH - _wordLength); mask >>= begin;
@@ -62,7 +65,7 @@ void WordRAM::CompressedArray::set(Int i, Int x) {
 	} else {
 		assert(beginIdx + 1 == endIdx);
 		// The item is located in two adjacent slots
-		begin %= CPU_WORD_LENGTH; end %= CPU_WORD_LENGTH;
+		begin &= MODCWL; end &= MODCWL;
 		// Calc x0 and x1
 		Int x0 = x >> (end + 1);
 		Int x1 = x << (CPU_WORD_LENGTH - end - 1);
@@ -79,11 +82,15 @@ void WordRAM::CompressedArray::set(Int i, Int x) {
 	}
 }
 
+void WordRAM::CompressedArray::print() {
+	for (int i = 0; i < _size; ++i) {
+		std::cout << get(i) << " ";
+	}
+	std::cout << std::endl;
+}
+
 void WordRAM::CompressedArray::Test() {
-	std::mt19937_64 rg;
-	std::string seed_str = "Test Compressed Array";
-	std::seed_seq seed(seed_str.begin(), seed_str.end());
-	rg.seed(seed);
+	auto rg = RandomGenerator("Test Compressed Array");
 
 	Int constexpr testSize = 137, testWordLength = 19;
 	Int constexpr maxValue = (Int(1) << testWordLength) - Int(1);
@@ -101,8 +108,7 @@ void WordRAM::CompressedArray::Test() {
 	for (int i = 0; i < testSize; ++i) {
 		auto cav = ca.get(i);
 		if (cav != a[i]) {
-			std::cerr << "Test Compressed Array Failed!" << std::endl;
-			assert(false);
+			assertError("Test Compressed Array Failed!");
 			return;
 		}
 	}
@@ -112,8 +118,7 @@ void WordRAM::CompressedArray::Test() {
 	for (int i = testSize - 1; i >= 0; --i) {
 		auto cav = ca.get(i);
 		if (cav != a[i]) {
-			std::cerr << "Test Compressed Array Failed!" << std::endl;
-			assert(false);
+			assertError("Test Compressed Array Failed!");
 			return;
 		}
 	}

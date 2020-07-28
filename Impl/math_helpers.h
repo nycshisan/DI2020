@@ -8,8 +8,6 @@
 
 #if CPU_WORD_LENGTH == 64
 typedef uint64_t Int;
-#elif CPU_WORD_LENGTH == 32
-typedef uint32_t Int;
 #endif
 
 inline Int lg(Int x) {
@@ -25,4 +23,13 @@ inline Int divceil(Int x, Int y) {
 	assert(y > 0);
 	if (x == 0) return 0;
 	else return (x - 1) / y + 1;
+}
+
+inline Int getOnes(Int x) {
+	Int o = 0;
+	while (x > 0) {
+		o += x & 1;
+		x >>= 1;
+	}
+	return o;
 }

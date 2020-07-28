@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="头文件\helpers">
+      <UniqueIdentifier>{f75dc865-1210-4830-87e4-f5abad895af0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DI2020.cpp">
@@ -24,15 +27,39 @@
     <ClCompile Include="BitVector.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Test.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="PCH.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="WordRAM.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="math_helpers.h">
+    <ClInclude Include="BitVector.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="BitVector.h">
+    <ClInclude Include="error_helpers.h">
+      <Filter>头文件\helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="math_helpers.h">
+      <Filter>头文件\helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="random_helpers.h">
+      <Filter>头文件\helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="helpers.h">
+      <Filter>头文件\helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="Test.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="timer_helpers.h">
+      <Filter>头文件\helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="PCH.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

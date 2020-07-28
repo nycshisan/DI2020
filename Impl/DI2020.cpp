@@ -1,13 +1,11 @@
-﻿#include <iostream>
+﻿#include "PCH.h"
 
-#include "WordRAM.h"
-#include "BitVector.h"
-
-void SelfTest() {
-    WordRAM::CompressedArray::Test();
-    BitVector::Test();
-}
+#include "Test.h"
 
 int main() {
+    Playground();
     SelfTest();
+    //TestCA();
+    TestBV();
+    system("pause");
 }
