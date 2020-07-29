@@ -14,13 +14,14 @@ public:
 		Int lgn = lgceil(bv->_n);
 		Int bound = (Int)pow(lgn, _c);
 		Int length = end - begin + 1;
+		Int wl = lgceil(length);
 		if (length >= bound) {
 			_isTree = false;
-			_buf = new WordRAM::CompressedArray(lgn * lgn, lgn);
+			_buf = new WordRAM::CompressedArray(length, wl);
 			Int bi = 0;
 			for (Int i = begin; i <= end; ++i) {
 				if (bv->getBit(i) == bit) {
-					_buf->set(bi, i);
+					_buf->set(bi, i - begin);
 					bi++;
 				}
 			}
@@ -37,7 +38,7 @@ public:
 		if (_isTree) {
 
 		} else {
-			return _buf->get(i);
+			return _buf->get(i) + 1;
 		}
 	}
 
