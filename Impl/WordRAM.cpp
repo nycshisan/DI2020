@@ -27,6 +27,14 @@ void WordRAM::CompressedArray::destroy() {
 	free(_d);
 }
 
+Int WordRAM::CompressedArray::size() {
+	return _size;
+}
+
+Int WordRAM::CompressedArray::maxValue() {
+	return (Int(1) << _wordLength) - 1;
+}
+
 Int WordRAM::CompressedArray::totalSize() {
 	return _arraySize + sizeof(*this);
 }

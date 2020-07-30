@@ -15,6 +15,10 @@ namespace WordRAM {
 
 		void destroy();
 
+		Int size();
+
+		Int maxValue();
+
 		Int totalSize();
 
 		Int get(Int i);

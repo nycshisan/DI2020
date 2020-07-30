@@ -25,6 +25,7 @@ class BitVector {
 	WordRAM::CompressedArray *_s1CA[2] = {};
 	Int _ssize1[2] = {}; // block number of S1 index
 	_SelectBlockIndex *_s2CA[2] = {};
+	WordRAM::CompressedArray *_s3CA = nullptr, *_s4CA = nullptr;
 
 	Int _getMultiBits(Int begin, Int end);
 

@@ -4,14 +4,21 @@
 #include "BitVector.h"
 
 class BitVector::_SelectBlockIndex {
-	static constexpr Int _c = 0;
+	static constexpr Int _c = 4;
+
+	BitVector *_bv;
+
 	bool _isTree;
 	Int _h = 0;
 
 	WordRAM::CompressedArray *_buf = nullptr;
 
+	WordRAM::CompressedArray *_ci = nullptr; // the c index
+
 public:
 	_SelectBlockIndex(Int begin, Int end, BitVector *bv, bool bit) {
+		_bv = bv;
+
 		Int lgn = lgceil(bv->_n);
 		Int bound = (Int)pow(lgn, _c);
 		Int length = end - begin + 1;
@@ -27,30 +34,63 @@ public:
 				}
 			}
 		} else {
-			assert(false);
 			_isTree = true;
 			Int cn = Int(sqrt(lgn)); // children number of the tree nodes
 			Int bs = lgn / 2; // small block size
 			Int wl = lgceil(lgn * lgn); // word length of the tree
 			Int ln = divceil(length, bs); // number of leaves
-			_h = Int(ceil(lgceil(ln, cn))) + 1;
+			_h = lgceil(ln, cn) + 1;
+
+			_ci = new WordRAM::CompressedArray(_h - 2, wl);
+			_ci->set(0, bs);
+			for (int i = 1; i < _h - 2; ++i) {
+				_ci->set(i, _ci->get(i - 1) * cn);
+			}
 			
 			_buf = (WordRAM::CompressedArray *)malloc(_h * sizeof(WordRAM::CompressedArray)); // rows of the tree
 			// First create leaves
 			new (&_buf[_h - 1]) WordRAM::CompressedArray(ln, wl);
 			Int bid = 0; // current small block index
 			Int bc = 0; // bit counter
-			for (Int i = begin; i < end; ++i) {
+			for (Int i = begin; i <= end; ++i) {
+				if (bv->getBit(i) == bit) {
+					bc++;
+				}
 				if ((i - begin + 1) % bs == 0) {
 					_buf[_h - 1].set(bid, bc);
 					bid++;
 					bc = 0;
 				}
-				if (bv->getBit(i) == bit) {
-					bc++;
+			}
+			if (length % bs != 0) {
+				_buf[_h - 1].set(bid, bc); // the last block
+				bid++;
+			}
+			assert(bid == ln);
+			// Build non-leaf nodes
+			for (int r = int(_h - 2); r >= 0; --r) {
+				Int w = divceil(_buf[r + 1].size(), cn); // current row width
+				new (&_buf[r]) WordRAM::CompressedArray(w, wl);
+				bid = bc = 0;
+				for (Int i = 0; i < _buf[r + 1].size(); ++i) {
+					bc += _buf[r + 1].get(i);
+					if ((i + 1) % cn == 0) {
+						_buf[r].set(bid, bc);
+						bid++;
+						bc = 0;
+					}
+				}
+				if (_buf[r + 1].size() % cn != 0) {
+					_buf[r].set(bid, bc); // the last block
+					bid++;
+				}
+				assert(bid == w);
+				if (r == 0) {
+					assert(_buf[r].size() == 1);
+				} else {
+					assert(_buf[r].size() > 1);
 				}
 			}
-
 		}
 	}
 
@@ -64,13 +104,15 @@ public:
 				_buf[i].destroy();
 			}
 			free(_buf);
+			delete _ci;
 		} else {
 			delete _buf;
 		}
 	}
 
-	Int select(Int i) {
+	Int select(Int i, bool bit) {
 		if (_isTree) {
+			Int io = 0; // idx offset
 
 		} else {
 			return _buf->get(i);
@@ -133,6 +175,38 @@ void BitVector::_buildIndexBF() {
 	}
 	_n0 = crt0;
 	_n1 = crt1;
+}
+
+void _BuildS3CAImpl(WordRAM::CompressedArray &s3CA, std::vector<int> &children, Int cn, Int maxcv) {
+	if (children.size() == cn) {
+		Int s3c = maxcv + 1;
+		Int r = 0;
+		for (int c : children) {
+			r *= cn;
+			r += c;
+		}
+		for (int k = 0; k <= maxcv; ++k) {
+			s3CA.set(s3c * r + k, 1);
+		}
+	} else {
+		int crt = 0;
+		for (int c : children) crt += c;
+		for (int i = 0; i <= maxcv - crt; ++i) {
+			children.emplace_back(i);
+			_BuildS3CAImpl(s3CA, children, cn, maxcv);
+			children.pop_back();
+		}
+	}
+}
+
+WordRAM::CompressedArray* _BuildS3CA(Int lgn) {
+	Int s3cn = sqrtceil(lgn); // children number in s2 tree
+	Int s3r = (lgn * lgn + 1) * s3cn, s3c = (lgn * lgn + 1); // rows and columns number of s3 index
+	Int s3wl = lgceil(sqrtceil(lgn)); // word length of s3 index items
+	auto s3CA = new WordRAM::CompressedArray(s3r * s3c, s3wl);
+	std::vector<int> children;
+	_BuildS3CAImpl(*s3CA, children, s3cn, lgn * lgn);
+	return s3CA;
 }
 
 void BitVector::_buildIndexCA() {
@@ -245,6 +319,31 @@ void BitVector::_buildIndexCA() {
 	}
 	assert(bz == _ssize1[0]);
 	assert(bo == _ssize1[1]);
+
+	_s3CA = _BuildS3CA(lgn);
+
+	Int s4bs = lgn / 2; // block size for s4 index
+	Int s4r = Int(1) << s4bs, s4c = s4bs;
+	Int s4wl = lgceil(s4bs) + 1; // word length of s4 index items, add 1 more validation bit
+	_s4CA = new WordRAM::CompressedArray(s4r * s4c, s4wl);
+	assert(_s4CA->maxValue() > s4bs);
+	Int *s4buf = new Int[s4bs];
+	for (int i = 0; i < s4r; ++i) {
+		int bid = 0; // id in s4buf
+		for (int k = 0; k < s4bs; ++k) {
+			if (getBitIn(i, k, s4bs) == 1) { // s4 index is for 1
+				s4buf[bid] = i;
+				bid++;
+			}
+		}
+		for (int j = 0; j < bid; ++j) {
+			_s4CA->set(i * s4c + j, s4buf[j]);
+		}
+		for (int j = bid; j < s4bs; ++j) {
+			_s4CA->set(i *s4c + j, _s4CA->maxValue());
+		}
+	}
+	delete[] s4buf;
 }
 
 Int BitVector::_rank1BF(Int i) {
@@ -281,7 +380,7 @@ Int BitVector::_select0BF(Int i) {
 }
 
 Int BitVector::_select0CA(Int i) {
-	return _s1CA[0]->get(i / _bs[1]) + _s2CA[0][i / _bs[1]].select(i % _bs[1]);
+	return _s1CA[0]->get(i / _bs[1]) + _s2CA[0][i / _bs[1]].select(i % _bs[1], 0);
 }
 
 Int BitVector::_select1BF(Int i) {
@@ -289,7 +388,7 @@ Int BitVector::_select1BF(Int i) {
 }
 
 Int BitVector::_select1CA(Int i) {
-	return _s1CA[1]->get(i / _bs[1]) + _s2CA[1][i / _bs[1]].select(i % _bs[1]);
+	return _s1CA[1]->get(i / _bs[1]) + _s2CA[1][i / _bs[1]].select(i % _bs[1], 1);
 }
 
 BitVector::BitVector(Int n, Type type, bool verbose) : _n(n), type(type), _verbose(verbose) {
@@ -320,6 +419,8 @@ BitVector::~BitVector() {
 		}
 	}
 	free(_s2CA[0]); free(_s2CA[1]);
+	delete _s3CA;
+	delete _s4CA;
 }
 
 bool BitVector::getBit(Int i) {
@@ -353,6 +454,8 @@ Int BitVector::totalSize() {
 				size += _s2CA[b][i].totalSize();
 			}
 		}
+		size += _s3CA->totalSize();
+		size += _s4CA->totalSize();
 		break;
 	}
 	return size;

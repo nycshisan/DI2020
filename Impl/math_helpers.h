@@ -29,6 +29,10 @@ inline Int divceil(Int x, Int y) {
 	else return (x - 1) / y + 1;
 }
 
+inline Int sqrtceil(Int x) {
+	return Int(ceil(sqrt(x)));
+}
+
 inline Int getOnes(Int x) {
 	Int o = 0;
 	while (x > 0) {
@@ -36,4 +40,8 @@ inline Int getOnes(Int x) {
 		x >>= 1;
 	}
 	return o;
+}
+
+inline bool getBitIn(Int x, Int length, Int i) {
+	return (x >> (length - i - 1)) & 1;
 }
