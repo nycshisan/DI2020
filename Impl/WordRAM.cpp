@@ -20,6 +20,10 @@ WordRAM::CompressedArray::CompressedArray(Int size, Int wordLength) : _size(size
 }
 
 WordRAM::CompressedArray::~CompressedArray() {
+	destroy();
+}
+
+void WordRAM::CompressedArray::destroy() {
 	free(_d);
 }
 
@@ -28,6 +32,7 @@ Int WordRAM::CompressedArray::totalSize() {
 }
 
 Int WordRAM::CompressedArray::get(Int i) {
+	assert(i < _size);
 	auto begin = i * _wordLength, end = begin + _wordLength - 1;
 	auto beginIdx = begin >> DIVCWL, endIdx = end >> DIVCWL;
 	if (beginIdx == endIdx) {
@@ -49,6 +54,8 @@ Int WordRAM::CompressedArray::get(Int i) {
 }
 
 void WordRAM::CompressedArray::set(Int i, Int x) {
+	assert(i < _size);
+	assert(x < ((Int(1) << _wordLength)));
 	auto begin = i * _wordLength, end = begin + _wordLength - 1;
 	auto beginIdx = begin >> DIVCWL, endIdx = end >> DIVCWL;
 	if (beginIdx == endIdx) {

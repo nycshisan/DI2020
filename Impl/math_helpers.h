@@ -19,6 +19,10 @@ inline Int lgceil(Int x) {
 	else return lg(x - 1) + 1;
 }
 
+inline Int lgceil(Int x, Int y) {
+	return Int(ceil(log(x) / log(y)));
+}
+
 inline Int divceil(Int x, Int y) {
 	assert(y > 0);
 	if (x == 0) return 0;

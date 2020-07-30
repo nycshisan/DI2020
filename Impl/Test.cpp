@@ -53,6 +53,9 @@ void _TestCAImpl(RandomGenerator &rg, Int length, Int wordSize) {
     }
     laTimer.print();
     caTimer.print();
+
+    delete buf;
+    free(la);
 }
 
 void TestCA() {
@@ -88,6 +91,11 @@ void TestBVImpl(RandomGenerator &rg, Int length) {
     bvCA.buildIndex();
     caTimer.end();
     caTimer.print();
+
+    // Test space
+    std::cout << "Storing `" << length << "` bits data." << std::endl;
+    std::cout << "Uncompressed size: " << bvBF.totalSize() << std::endl;
+    std::cout << "Compressed size: " << bvCA.totalSize() << std::endl;
 }
 
 void TestBV() {

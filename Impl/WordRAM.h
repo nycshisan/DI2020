@@ -13,6 +13,8 @@ namespace WordRAM {
 
 		~CompressedArray();
 
+		void destroy();
+
 		Int totalSize();
 
 		Int get(Int i);

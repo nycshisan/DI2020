@@ -4,8 +4,9 @@
 #include "BitVector.h"
 
 class BitVector::_SelectBlockIndex {
-	static constexpr Int _c = 4;
+	static constexpr Int _c = 0;
 	bool _isTree;
+	Int _h = 0;
 
 	WordRAM::CompressedArray *_buf = nullptr;
 
@@ -26,26 +27,62 @@ public:
 				}
 			}
 		} else {
+			assert(false);
 			_isTree = true;
+			Int cn = Int(sqrt(lgn)); // children number of the tree nodes
+			Int bs = lgn / 2; // small block size
+			Int wl = lgceil(lgn * lgn); // word length of the tree
+			Int ln = divceil(length, bs); // number of leaves
+			_h = Int(ceil(lgceil(ln, cn))) + 1;
+			
+			_buf = (WordRAM::CompressedArray *)malloc(_h * sizeof(WordRAM::CompressedArray)); // rows of the tree
+			// First create leaves
+			new (&_buf[_h - 1]) WordRAM::CompressedArray(ln, wl);
+			Int bid = 0; // current small block index
+			Int bc = 0; // bit counter
+			for (Int i = begin; i < end; ++i) {
+				if ((i - begin + 1) % bs == 0) {
+					_buf[_h - 1].set(bid, bc);
+					bid++;
+					bc = 0;
+				}
+				if (bv->getBit(i) == bit) {
+					bc++;
+				}
+			}
+
 		}
 	}
 
 	~_SelectBlockIndex() {
-		delete _buf;
+		destroy();
+	}
+
+	void destroy() {
+		if (_isTree) {
+			for (int i = 0; i < _h; ++i) {
+				_buf[i].destroy();
+			}
+			free(_buf);
+		} else {
+			delete _buf;
+		}
 	}
 
 	Int select(Int i) {
 		if (_isTree) {
 
 		} else {
-			return _buf->get(i) + 1;
+			return _buf->get(i);
 		}
 	}
 
 	Int totalSize() {
 		Int size = sizeof(*this);
 		if (_isTree) {
-			
+			for (int i = 0; i < _h; ++i) {
+				size += _buf[i].totalSize();
+			}
 		} else {
 			size += _buf->totalSize();
 		}
@@ -160,14 +197,11 @@ void BitVector::_buildIndexCA() {
 	_n1 = rank1(_n - 1);
 	_n0 = _n - _n1;
 
-	Int swl1[2];
-	swl1[0] = lgceil(_n0);
-	swl1[1] = lgceil(_n1);
 	_ssize1[0] = divceil(_n0, _bs[1]);
 	_ssize1[1] = divceil(_n1, _bs[1]);
 
-	_s1CA[0] = new WordRAM::CompressedArray(_ssize1[0], swl1[0]);
-	_s1CA[1] = new WordRAM::CompressedArray(_ssize1[1], swl1[1]);
+	_s1CA[0] = new WordRAM::CompressedArray(_ssize1[0], lgn);
+	_s1CA[1] = new WordRAM::CompressedArray(_ssize1[1], lgn);
 	_s2CA[0] = (_SelectBlockIndex *)malloc(_ssize1[0] * sizeof(_SelectBlockIndex));
 	_s2CA[1] = (_SelectBlockIndex *)malloc(_ssize1[1] * sizeof(_SelectBlockIndex));
 
@@ -175,6 +209,8 @@ void BitVector::_buildIndexCA() {
 	Int bz = 0, bo = 0; // currently we have `bz` blocks of zeros and `bo` blocks of ones
 	Int lz = 0, lo = 0; // the beginging index of the current block
 
+	_s1CA[0]->set(0, 0);
+	_s1CA[1]->set(0, 0);
 	for (Int i = 0; i < _n; ++i) {
 		auto b = getBit(i);
 		if (b == 0) {
@@ -184,27 +220,31 @@ void BitVector::_buildIndexCA() {
 		}
 
 		if (cz == _bs[1]) {
-			_s1CA[0]->set(bz, i);
+			_s1CA[0]->set(bz + 1, i + 1);
 			cz = 0;
-			_s2CA[0][bz] = _SelectBlockIndex(lz, i, this, 0);
+			new (&_s2CA[0][bz]) _SelectBlockIndex(lz, i, this, 0);
 			bz++;
 			lz = i + 1;
 		}
 		if (co == _bs[1]) {
-			_s1CA[1]->set(bo, i);
+			_s1CA[1]->set(bo + 1, i + 1);
 			co = 0;
-			_s2CA[1][bo] = _SelectBlockIndex(lo, i, this, 1);
+			new (&_s2CA[1][bo]) _SelectBlockIndex(lo, i, this, 1);
 			bo++;
 			lo = i + 1;
 		}
 	}
 	// build the last block
 	if (lz != _n) {
-		_s2CA[0][bz] = _SelectBlockIndex(lz, _n - 1, this, 0);
+		new (&_s2CA[0][bz]) _SelectBlockIndex(lz, _n - 1, this, 0);
+		bz++;
 	}
 	if (lo != _n) {
-		_s2CA[1][bo] = _SelectBlockIndex(lo, _n - 1, this, 1);
+		new (&_s2CA[1][bo]) _SelectBlockIndex(lo, _n - 1, this, 1);
+		bo++;
 	}
+	assert(bz == _ssize1[0]);
+	assert(bo == _ssize1[1]);
 }
 
 Int BitVector::_rank1BF(Int i) {
@@ -270,9 +310,15 @@ BitVector::BitVector(Int n, Type type, bool verbose) : _n(n), type(type), _verbo
 }
 
 BitVector::~BitVector() {
+	free(_d);
 	free(_r1BF); free(_s0BF); free(_s1BF);
 	delete _r1CA; delete _r2CA; delete _r3CA;
 	delete _s1CA[0]; delete _s1CA[1];
+	for (int b = 0; b < 2; ++b) {
+		for (int i = 0; i < _ssize1[b]; ++i) {
+			_s2CA[b][i].destroy();
+		}
+	}
 	free(_s2CA[0]); free(_s2CA[1]);
 }
 
@@ -329,12 +375,12 @@ void BitVector::Test() {
 		}
 	}
 
-	// Test rank
-	Int rankTestLength = 13759;
-	BitVector bv1(rankTestLength, Type::BruteForce), bv2(rankTestLength, Type::SuccinctWithCompressedArray);
+	Int testLength = 137191;
+	BitVector bv1(testLength, Type::BruteForce), bv2(testLength, Type::SuccinctWithCompressedArray);
 	bv1.randomize(); bv2.randomize();
 	bv1.buildIndex(); bv2.buildIndex();
-	for (int i = 0; i < rankTestLength; ++i) {
+	// Test rank
+	for (int i = 0; i < testLength; ++i) {
 		if (bv1.rank1(i) != bv2.rank1(i)) {
 			std::cout << bv1.rank1(i);
 			std::cout << " ";
@@ -352,6 +398,27 @@ void BitVector::Test() {
 	}
 
 	// Test Select
+	if (bv1._n0 != bv2._n0 || bv1._n1 != bv2._n1) {
+		assertError("Max Select Numbers Test Failed!");
+	}
+	for (int i = 1; i <= bv1._n1; ++i) {
+		if (bv1.select1(i) != bv2.select1(i)) {
+			std::cout << bv1.select1(i);
+			std::cout << " ";
+			std::cout << bv2.select1(i);
+			std::cout << std::endl;
+			assertError("Select1 Test Failed!");
+		}
+	}
+	for (int i = 1; i <= bv1._n0; ++i) {
+		if (bv1.select0(i) != bv2.select0(i)) {
+			std::cout << bv1.select0(i);
+			std::cout << " ";
+			std::cout << bv2.select0(i);
+			std::cout << std::endl;
+			assertError("Select0 Test Failed!");
+		}
+	}
 }
 
 inline void BitVector::randomize() {
