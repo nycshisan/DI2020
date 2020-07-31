@@ -96,6 +96,23 @@ void TestBVImpl(RandomGenerator &rg, Int length) {
     std::cout << "Storing `" << length << "` bits data." << std::endl;
     std::cout << "Uncompressed size: " << bvBF.totalSize() << std::endl;
     std::cout << "Compressed size: " << bvCA.totalSize() << std::endl;
+
+    // Test rank speed
+    std::cout << "Test rank speed:" << std::endl;
+    bfTimer.name = "Brute force ranking"; caTimer.name = "Succinct ranking";
+    bfTimer.clear(); caTimer.clear();
+    for (int i = 0; i < length; ++i) {
+        bfTimer.start();
+        Int r0bf = bvBF.rank0(i);
+        Int r1bf = bvBF.rank1(i);
+        bfTimer.end();
+        caTimer.start();
+        Int r0ca = bvCA.rank0(i);
+        Int r1ca = bvCA.rank1(i);
+        caTimer.end();
+        assert(r0ca == r0bf && r1ca == r1bf);
+    }
+    bfTimer.print(); caTimer.print();
 }
 
 void TestBV() {
