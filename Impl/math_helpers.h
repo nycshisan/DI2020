@@ -16,6 +16,7 @@ inline Int lg(Int x) {
 
 inline Int lgceil(Int x) {
 	if (x == 0) return 0;
+	if (x == 1) return 1;
 	else return lg(x - 1) + 1;
 }
 
@@ -42,6 +43,6 @@ inline Int getOnes(Int x) {
 	return o;
 }
 
-inline bool getBitIn(Int x, Int length, Int i) {
+inline bool getBitIn(Int x, Int i, Int length) {
 	return (x >> (length - i - 1)) & 1;
 }

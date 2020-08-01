@@ -27,7 +27,7 @@ class BitVector {
 	Int _ssize1[2] = {}; // block number of S1 index
 	_SelectBlockIndex *_s2CA[2] = {};
 	_SelectTreeTable *_s3CA = nullptr;
-	WordRAM::CompressedArray *_s4CA = nullptr;
+	WordRAM::CompressedArray2D *_s4CA[2] = {};
 
 	Int _getMultiBits(Int begin, Int end);
 

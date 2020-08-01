@@ -7,23 +7,28 @@ class BitVector::_SelectTreeTable {
 public:
 	class Item {
 		WordRAM::CompressedArray *_table, *_left;
-
+		std::vector<Int> _cbuf;
 	public:
 		Item(const std::vector<Int> &cbuf) {
+			_cbuf = cbuf;
+			if (cbuf.size() == 1 && cbuf[0] == 1) {
+				std::cout << "fuck";
+			}
 			Int csum = 0;
 			for (int i = 0; i < cbuf.size(); ++i) {
 				csum += cbuf[i];
 			}
 			Int wl = lgceil(cbuf.size());
-			_table = new WordRAM::CompressedArray(csum + 1, wl);
+			_table = new WordRAM::CompressedArray(csum, wl);
 			Int crt = 0; // current idx since last child
 			Int cid = 0; // current child idx
-			for (int i = 0; i <= csum; ++i) {
-				while (crt == cbuf[cid]) {
+			for (int i = 0; i < csum; ++i) {
+				while (cid < cbuf.size() && crt == cbuf[cid]) {
 					crt = 0;
 					cid++;
 				}
 				_table->set(i, cid);
+				crt++;
 			}
 			_left = new WordRAM::CompressedArray(cbuf.size(), lgceil(csum + 1));
 			Int leftCount = 0;
@@ -109,10 +114,9 @@ class BitVector::_SelectBlockIndex {
 
 	bool _isTree;
 	Int _h = 0, _cn = 0, _bs = 0;
+	Int _begin;
 
 	WordRAM::CompressedArray *_buf = nullptr;
-
-	WordRAM::CompressedArray *_ci = nullptr; // the c index
 
 	_SelectTreeTable::Item ***_items = nullptr;
 	Int _itemNum = 0;
@@ -120,6 +124,7 @@ class BitVector::_SelectBlockIndex {
 public:
 	_SelectBlockIndex(Int begin, Int end, BitVector *bv, bool bit, _SelectTreeTable &s3table) {
 		_bv = bv;
+		_begin = begin;
 
 		Int lgn = lgceil(bv->_n);
 		Int bound = (Int)pow(lgn, _c);
@@ -142,12 +147,6 @@ public:
 			Int wl = lgceil(lgn * lgn); // word length of the tree
 			Int ln = divceil(length, _bs); // number of leaves
 			_h = lgceil(ln, _cn) + 1;
-
-			_ci = new WordRAM::CompressedArray(_h - 2, wl);
-			_ci->set(0, _bs);
-			for (Int i = 1; i < _h - 2; ++i) {
-				_ci->set(i, _ci->get(i - 1) * _cn);
-			}
 
 			_items = new _SelectTreeTable::Item **[_h - 1];
 			
@@ -194,6 +193,10 @@ public:
 				}
 				if (_buf[r + 1].size() % _cn != 0) {
 					_buf[r].set(bid, bc); // the last block
+					while (cbuf.size() < _cn) {
+						cbuf.emplace_back(0);
+					}
+					_items[r][bid] = s3table.getItem(cbuf);
 					bid++;
 				}
 				assert(bid == w);
@@ -216,7 +219,6 @@ public:
 				_buf[i].destroy();
 			}
 			free(_buf);
-			delete _ci;
 			for (int i = 0; i < _h - 1; ++i) {
 				delete[] _items[i];
 			}
@@ -228,7 +230,6 @@ public:
 
 	Int select(Int i, bool bit) {
 		if (_isTree) {
-			Int io = 0; // idx offset
 			Int bid = 0; // small block idx
 			for (int r = 0; r < _h - 1; ++r) {
 				auto item = _items[r][bid];
@@ -236,7 +237,18 @@ public:
 				bid = bid * _cn + cid;
 				i -= item->getLeftChildrenNumber(cid);
 			}
-			return bid * _bs;
+			Int begin = _begin + bid * _bs; // begin of the target small block
+			Int end = begin + _bs;
+			Int v;
+			if (end <= _bv->_n) {
+				v = _bv->_getMultiBits(begin, begin + _bs - 1);
+			} else {
+				v = _bv->_getMultiBits(begin, _bv->_n - 1);
+				v <<= (end - _bv->_n);
+			}
+			Int io = bid * _bs, iob = _bv->_s4CA[bit]->get2D(v, i);
+			assert(iob < (Int(1) << _bs));
+			return io + iob;
 		} else {
 			return _buf->get(i);
 		}
@@ -421,22 +433,25 @@ void BitVector::_buildIndexCA() {
 	Int s4bs = lgn / 2; // block size for s4 index
 	Int s4r = Int(1) << s4bs, s4c = s4bs;
 	Int s4wl = lgceil(s4bs) + 1; // word length of s4 index items, add 1 more validation bit
-	_s4CA = new WordRAM::CompressedArray(s4r * s4c, s4wl);
-	assert(_s4CA->maxValue() > s4bs);
+	_s4CA[0] = new WordRAM::CompressedArray2D(s4r, s4c, s4wl);
+	_s4CA[1] = new WordRAM::CompressedArray2D(s4r, s4c, s4wl);
+	assert(_s4CA[0]->maxValue() > s4bs);
 	Int *s4buf = new Int[s4bs];
-	for (int i = 0; i < s4r; ++i) {
-		int bid = 0; // id in s4buf
-		for (int k = 0; k < s4bs; ++k) {
-			if (getBitIn(i, k, s4bs) == 1) { // s4 index is for 1
-				s4buf[bid] = i;
-				bid++;
+	for (int bit = 0; bit <= 1; ++bit) {
+		for (int i = 0; i < s4r; ++i) {
+			int bid = 0; // id in s4buf
+			for (int k = 0; k < s4bs; ++k) {
+				if (getBitIn(i, k, s4bs) == bool(bit)) { // s4 index is for 1
+					s4buf[bid] = k;
+					bid++;
+				}
 			}
-		}
-		for (int j = 0; j < bid; ++j) {
-			_s4CA->set(i * s4c + j, s4buf[j]);
-		}
-		for (int j = bid; j < s4bs; ++j) {
-			_s4CA->set(i *s4c + j, _s4CA->maxValue());
+			for (int j = 0; j < bid; ++j) {
+				_s4CA[bit]->set(i * s4c + j, s4buf[j]);
+			}
+			for (int j = bid; j < s4bs; ++j) {
+				_s4CA[bit]->set(i * s4c + j, _s4CA[bit]->maxValue());
+			}
 		}
 	}
 	delete[] s4buf;
@@ -476,7 +491,9 @@ Int BitVector::_select0BF(Int i) {
 }
 
 Int BitVector::_select0CA(Int i) {
-	return _s1CA[0]->get(i / _bs[1]) + _s2CA[0][i / _bs[1]].select(i % _bs[1], 0);
+	Int s1 = _s1CA[0]->get(i / _bs[1]);
+	Int s2 = _s2CA[0][i / _bs[1]].select(i % _bs[1], 0);
+	return s1 + s2;
 }
 
 Int BitVector::_select1BF(Int i) {
@@ -484,7 +501,9 @@ Int BitVector::_select1BF(Int i) {
 }
 
 Int BitVector::_select1CA(Int i) {
-	return _s1CA[1]->get(i / _bs[1]) + _s2CA[1][i / _bs[1]].select(i % _bs[1], 1);
+	Int s1 = _s1CA[1]->get(i / _bs[1]);
+	Int s2 = _s2CA[1][i / _bs[1]].select(i % _bs[1], 1);
+	return s1 + s2;
 }
 
 BitVector::BitVector(Int n, Type type, bool verbose) : _n(n), type(type), _verbose(verbose) {
@@ -516,7 +535,7 @@ BitVector::~BitVector() {
 	}
 	free(_s2CA[0]); free(_s2CA[1]);
 	delete _s3CA;
-	delete _s4CA;
+	delete _s4CA[0]; delete _s4CA[1];
 }
 
 bool BitVector::getBit(Int i) {
@@ -549,9 +568,9 @@ Int BitVector::totalSize() {
 			for (int i = 0; i < _ssize1[b]; ++i) {
 				size += _s2CA[b][i].totalSize();
 			}
+			size += _s4CA[b]->totalSize();
 		}
 		size += _s3CA->totalSize();
-		size += _s4CA->totalSize();
 		break;
 	}
 	return size;
@@ -574,19 +593,12 @@ void BitVector::Test() {
 		}
 	}
 
-	Int testLength = 137191;
+	Int testLength = 139517;
 	BitVector bv1(testLength, Type::BruteForce), bv2(testLength, Type::SuccinctWithCompressedArray);
 	bv1.randomize(); bv2.randomize();
 	bv1.buildIndex(); bv2.buildIndex();
 	// Test rank
 	for (int i = 0; i < testLength; ++i) {
-		if (bv1.rank1(i) != bv2.rank1(i)) {
-			std::cout << bv1.rank1(i);
-			std::cout << " ";
-			std::cout << bv2.rank1(i);
-			std::cout << std::endl;
-			assertError("Rank1 Test Failed!");
-		}
 		if (bv1.rank0(i) != bv2.rank0(i)) {
 			std::cout << bv1.rank0(i);
 			std::cout << " ";
@@ -594,28 +606,35 @@ void BitVector::Test() {
 			std::cout << std::endl;
 			assertError("Rank0 Test Failed!");
 		}
+		if (bv1.rank1(i) != bv2.rank1(i)) {
+			std::cout << bv1.rank1(i);
+			std::cout << " ";
+			std::cout << bv2.rank1(i);
+			std::cout << std::endl;
+			assertError("Rank1 Test Failed!");
+		}
 	}
-	return;
+	
 	// Test Select
 	if (bv1._n0 != bv2._n0 || bv1._n1 != bv2._n1) {
 		assertError("Max Select Numbers Test Failed!");
 	}
-	for (int i = 1; i <= bv1._n1; ++i) {
-		if (bv1.select1(i) != bv2.select1(i)) {
-			std::cout << bv1.select1(i);
-			std::cout << " ";
-			std::cout << bv2.select1(i);
-			std::cout << std::endl;
-			assertError("Select1 Test Failed!");
-		}
-	}
-	for (int i = 1; i <= bv1._n0; ++i) {
+	for (Int i = 1; i <= bv1._n0; ++i) {
 		if (bv1.select0(i) != bv2.select0(i)) {
-			std::cout << bv1.select0(i);
+			std::cout << bv1._select0BF(i - 1);
 			std::cout << " ";
-			std::cout << bv2.select0(i);
+			std::cout << bv2._select0CA(i - 1);
 			std::cout << std::endl;
 			assertError("Select0 Test Failed!");
+		}
+	}
+	for (Int i = 1; i <= bv1._n1; ++i) {
+		if (bv1.select1(i) != bv2.select1(i)) {
+			std::cout << bv1._select1BF(i - 1);
+			std::cout << " ";
+			std::cout << bv2._select1CA(i - 1);
+			std::cout << std::endl;
+			assertError("Select1 Test Failed!");
 		}
 	}
 }

@@ -138,3 +138,17 @@ void WordRAM::CompressedArray::Test() {
 		}
 	}
 }
+
+WordRAM::CompressedArray2D::CompressedArray2D(Int row, Int column, Int wordLength) : CompressedArray(row *column, wordLength), _column(column) {}
+
+Int WordRAM::CompressedArray2D::totalSize() {
+	return _arraySize + sizeof(*this);
+}
+
+Int WordRAM::CompressedArray2D::get2D(Int i, Int j) {
+	return CompressedArray::get(i * _column + j);
+}
+
+void WordRAM::CompressedArray2D::set2D(Int i, Int j, Int x) {
+	CompressedArray::set(i * _column + j, x);
+}
