@@ -78,7 +78,7 @@ void TestCA() {
 
 void TestBVImpl(RandomGenerator &rg, Int length) {
     rg.reseed();
-    BitVector bvBF(length, BitVector::Type::BruteForce), bvCA(length, BitVector::Type::SuccinctWithCompressedArray);
+    BitVector bvBF(length, DataStructureType::BruteForce), bvCA(length, DataStructureType::SuccinctWithCompressedArray);
     bvBF.randomize(); bvCA.randomize();
 
     std::cout << "Test build index speed for `" << length << "` length:" << std::endl;
@@ -113,12 +113,37 @@ void TestBVImpl(RandomGenerator &rg, Int length) {
         assert(r0ca == r0bf && r1ca == r1bf);
     }
     bfTimer.print(); caTimer.print();
+
+    // Test select speed
+    assert(bvBF.n0 == bvCA.n0 && bvBF.n1 == bvCA.n1);
+    std::cout << "Test select speed:" << std::endl;
+    bfTimer.name = "Brute force selecting"; caTimer.name = "Succinct selecting";
+    bfTimer.clear(); caTimer.clear();
+    for (int i = 1; i <= bvBF.n0; ++i) {
+        bfTimer.start();
+        Int s0bf = bvBF.select0(i);
+        bfTimer.end();
+        caTimer.start();
+        Int s0ca = bvCA.select0(i);
+        caTimer.end();
+        assert(s0ca == s0bf);
+    }
+    for (int i = 1; i <= bvBF.n1; ++i) {
+        bfTimer.start();
+        Int s1bf = bvBF.select1(i);
+        bfTimer.end();
+        caTimer.start();
+        Int s1ca = bvCA.select1(i);
+        caTimer.end();
+        assert(s1ca == s1bf);
+    }
+    bfTimer.print(); caTimer.print();
 }
 
 void TestBV() {
     std::cout << "Test Bit Vector" << std::endl;
     auto rg = RandomGenerator("Test Bit Vector");
-    Int length = 17599993;
+    Int length = 3013;
     TestBVImpl(rg, length);
 }
 

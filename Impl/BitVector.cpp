@@ -7,16 +7,16 @@ class BitVector::_SelectTreeTable {
 public:
 	class Item {
 		WordRAM::CompressedArray *_table, *_left;
-		std::vector<Int> _cbuf;
+
 	public:
 		Item(const std::vector<Int> &cbuf) {
-			_cbuf = cbuf;
-			if (cbuf.size() == 1 && cbuf[0] == 1) {
-				std::cout << "fuck";
-			}
 			Int csum = 0;
 			for (int i = 0; i < cbuf.size(); ++i) {
 				csum += cbuf[i];
+			}
+			if (csum == 0) {
+				_table = _left = nullptr;
+				return;
 			}
 			Int wl = lgceil(cbuf.size());
 			_table = new WordRAM::CompressedArray(csum, wl);
@@ -48,7 +48,10 @@ public:
 		}
 
 		Int totalSize() {
-			return sizeof(*this) + _table->totalSize() + _left->totalSize();
+			Int size = sizeof(*this);
+			if (_table) size += _table->totalSize();
+			if (_left) size += _left->totalSize();
+			return size;
 		}
 
 		Int getChildIdx(Int i) {
@@ -113,7 +116,7 @@ class BitVector::_SelectBlockIndex {
 	BitVector *_bv;
 
 	bool _isTree;
-	Int _h = 0, _cn = 0, _bs = 0;
+	Int _h = 0;
 	Int _begin;
 
 	WordRAM::CompressedArray *_buf = nullptr;
@@ -142,11 +145,11 @@ public:
 			}
 		} else {
 			_isTree = true;
-			_cn = Int(sqrt(lgn)); // children number of the tree nodes
-			_bs = lgn / 2; // small block size
-			Int wl = lgceil(lgn * lgn); // word length of the tree
-			Int ln = divceil(length, _bs); // number of leaves
-			_h = lgceil(ln, _cn) + 1;
+			Int cn = _bv->_s2TCN; // children number of the tree nodes
+			Int bs = _bv->_s2TBS; // small block size
+			Int wl = lgceil(lgn * lgn + 1); // word length of the tree
+			Int ln = divceil(length, bs); // number of leaves
+			_h = lgceil(ln, cn) + 1;
 
 			_items = new _SelectTreeTable::Item **[_h - 1];
 			
@@ -159,13 +162,13 @@ public:
 				if (bv->getBit(i) == bit) {
 					bc++;
 				}
-				if ((i - begin + 1) % _bs == 0) {
+				if ((i - begin + 1) % bs == 0) {
 					_buf[_h - 1].set(bid, bc);
 					bid++;
 					bc = 0;
 				}
 			}
-			if (length % _bs != 0) {
+			if (length % bs != 0) {
 				_buf[_h - 1].set(bid, bc); // the last block
 				bid++;
 			}
@@ -174,7 +177,7 @@ public:
 			// Build non-leaf nodes
 			for (int r = int(_h - 2); r >= 0; --r) {
 				cbuf.clear();
-				Int w = divceil(_buf[r + 1].size(), _cn); // current row width
+				Int w = divceil(_buf[r + 1].size(), cn); // current row width
 				_items[r] = new _SelectTreeTable::Item * [w];
 				_itemNum += w;
 				new (&_buf[r]) WordRAM::CompressedArray(w, wl);
@@ -183,7 +186,7 @@ public:
 					auto c = _buf[r + 1].get(i);
 					bc += c;
 					cbuf.emplace_back(c);
-					if ((i + 1) % _cn == 0) {
+					if ((i + 1) % cn == 0) {
 						_buf[r].set(bid, bc);
 						_items[r][bid] = s3table.getItem(cbuf);
 						bid++;
@@ -191,9 +194,9 @@ public:
 						cbuf.clear();
 					}
 				}
-				if (_buf[r + 1].size() % _cn != 0) {
+				if (_buf[r + 1].size() % cn != 0) {
 					_buf[r].set(bid, bc); // the last block
-					while (cbuf.size() < _cn) {
+					while (cbuf.size() < cn) {
 						cbuf.emplace_back(0);
 					}
 					_items[r][bid] = s3table.getItem(cbuf);
@@ -234,20 +237,20 @@ public:
 			for (int r = 0; r < _h - 1; ++r) {
 				auto item = _items[r][bid];
 				Int cid = item->getChildIdx(i);
-				bid = bid * _cn + cid;
+				bid = bid * _bv->_s2TCN + cid;
 				i -= item->getLeftChildrenNumber(cid);
 			}
-			Int begin = _begin + bid * _bs; // begin of the target small block
-			Int end = begin + _bs;
+			Int begin = _begin + bid * _bv->_s2TBS; // begin of the target small block
+			Int end = begin + _bv->_s2TBS;
 			Int v;
 			if (end <= _bv->_n) {
-				v = _bv->_getMultiBits(begin, begin + _bs - 1);
+				v = _bv->_getMultiBits(begin, begin + _bv->_s2TBS - 1);
 			} else {
 				v = _bv->_getMultiBits(begin, _bv->_n - 1);
 				v <<= (end - _bv->_n);
 			}
-			Int io = bid * _bs, iob = _bv->_s4CA[bit]->get2D(v, i);
-			assert(iob < (Int(1) << _bs));
+			Int io = bid * _bv->_s2TBS, iob = _bv->_s4CA[bit]->get2D(v, i);
+			assert(iob < (Int(1) << _bv->_s2TBS));
 			return io + iob;
 		} else {
 			return _buf->get(i);
@@ -310,8 +313,8 @@ void BitVector::_buildIndexBF() {
 			_s1BF[crt1++] = i;
 		}
 	}
-	_n0 = crt0;
-	_n1 = crt1;
+	n0 = crt0;
+	n1 = crt1;
 }
 
 void BitVector::_buildIndexCA() {
@@ -370,11 +373,11 @@ void BitVector::_buildIndexCA() {
 	}
 
 	// Build index for select
-	_n1 = rank1(_n - 1);
-	_n0 = _n - _n1;
+	n1 = rank1(_n - 1);
+	n0 = _n - n1;
 
-	_ssize1[0] = divceil(_n0, _bs[1]);
-	_ssize1[1] = divceil(_n1, _bs[1]);
+	_ssize1[0] = divceil(n0, _bs[1]);
+	_ssize1[1] = divceil(n1, _bs[1]);
 
 	_s1CA[0] = new WordRAM::CompressedArray(_ssize1[0], lgn);
 	_s1CA[1] = new WordRAM::CompressedArray(_ssize1[1], lgn);
@@ -384,6 +387,8 @@ void BitVector::_buildIndexCA() {
 	// Initialize s3
 	Int s3bs = lgn * lgn + 1;
 	_s3CA = new _SelectTreeTable(s3bs);
+	_s2TCN = Int(sqrt(lgn));
+	_s2TBS = lgn / 2;
 
 	// Build s1 & s2
 	Int cz = 0, co = 0; // currently we have `cz` zeros and `co` ones
@@ -506,7 +511,7 @@ Int BitVector::_select1CA(Int i) {
 	return s1 + s2;
 }
 
-BitVector::BitVector(Int n, Type type, bool verbose) : _n(n), type(type), _verbose(verbose) {
+BitVector::BitVector(Int n, DataStructureType type, bool verbose) : _n(n), _type(type), _verbose(verbose) {
 	// The actual size of the memory to store the vector
 	_dataSize = divceil(_n, CPU_WORD_LENGTH) * (CPU_WORD_LENGTH / 8);
 	_d = (Int *)malloc(_dataSize);
@@ -554,11 +559,11 @@ void BitVector::setBit(Int i, bool x) {
 
 Int BitVector::totalSize() {
 	Int size = _dataSize + sizeof(*this);
-	switch (type) {
-	case Type::BruteForce:
+	switch (_type) {
+	case DataStructureType::BruteForce:
 		size += 3 * sizeof(Int) * _n;
 		break;
-	case Type::SuccinctWithCompressedArray:
+	case DataStructureType::SuccinctWithCompressedArray:
 		size += _r1CA->totalSize();
 		size += _r2CA->totalSize();
 		size += _r3CA->totalSize();
@@ -577,7 +582,7 @@ Int BitVector::totalSize() {
 }
 
 void BitVector::Test() {
-	BitVector bv(13719, Type::SuccinctWithCompressedArray);
+	BitVector bv(13719, DataStructureType::SuccinctWithCompressedArray);
 
 	// Test getter and setter
 	bv.randomize();
@@ -594,7 +599,7 @@ void BitVector::Test() {
 	}
 
 	Int testLength = 139517;
-	BitVector bv1(testLength, Type::BruteForce), bv2(testLength, Type::SuccinctWithCompressedArray);
+	BitVector bv1(testLength, DataStructureType::BruteForce), bv2(testLength, DataStructureType::SuccinctWithCompressedArray);
 	bv1.randomize(); bv2.randomize();
 	bv1.buildIndex(); bv2.buildIndex();
 	// Test rank
@@ -616,10 +621,10 @@ void BitVector::Test() {
 	}
 	
 	// Test Select
-	if (bv1._n0 != bv2._n0 || bv1._n1 != bv2._n1) {
+	if (bv1.n0 != bv2.n0 || bv1.n1 != bv2.n1) {
 		assertError("Max Select Numbers Test Failed!");
 	}
-	for (Int i = 1; i <= bv1._n0; ++i) {
+	for (Int i = 1; i <= bv1.n0; ++i) {
 		if (bv1.select0(i) != bv2.select0(i)) {
 			std::cout << bv1._select0BF(i - 1);
 			std::cout << " ";
@@ -628,7 +633,7 @@ void BitVector::Test() {
 			assertError("Select0 Test Failed!");
 		}
 	}
-	for (Int i = 1; i <= bv1._n1; ++i) {
+	for (Int i = 1; i <= bv1.n1; ++i) {
 		if (bv1.select1(i) != bv2.select1(i)) {
 			std::cout << bv1._select1BF(i - 1);
 			std::cout << " ";
@@ -647,11 +652,11 @@ inline void BitVector::randomize() {
 }
 
 void BitVector::buildIndex() {
-	switch (type) {
-	case Type::BruteForce:
+	switch (_type) {
+	case DataStructureType::BruteForce:
 		_buildIndexBF();
 		break;
-	case Type::SuccinctWithCompressedArray:
+	case DataStructureType::SuccinctWithCompressedArray:
 		_buildIndexCA();
 		break;
 	}
@@ -665,11 +670,11 @@ Int BitVector::rank1(Int i) {
 	if (i >= _n) {
 		throw std::out_of_range("Rank of " + std::to_string(i) + "-th bit when there are only " + std::to_string(_n) + " bits in the vector.");
 	}
-	switch (type) {
-	case Type::BruteForce:
+	switch (_type) {
+	case DataStructureType::BruteForce:
 		return _rank1BF(i);
 		break;
-	case Type::SuccinctWithCompressedArray:
+	case DataStructureType::SuccinctWithCompressedArray:
 		return _rank1CA(i);
 		break;
 	default:
@@ -679,14 +684,14 @@ Int BitVector::rank1(Int i) {
 
 Int BitVector::select0(Int i) {
 	i--; // internal the select result is zero-based
-	if (i >= _n0) {
-		throw std::out_of_range("Select of " + std::to_string(i) + "-th `0` when there are only " + std::to_string(_n0) + " `0`s in the vector.");
+	if (i >= n0) {
+		throw std::out_of_range("Select of " + std::to_string(i) + "-th `0` when there are only " + std::to_string(n0) + " `0`s in the vector.");
 	}
-	switch (type) {
-	case Type::BruteForce:
+	switch (_type) {
+	case DataStructureType::BruteForce:
 		return _select0BF(i);
 		break;
-	case Type::SuccinctWithCompressedArray:
+	case DataStructureType::SuccinctWithCompressedArray:
 		return _select0CA(i);
 		break;
 	default:
@@ -696,14 +701,14 @@ Int BitVector::select0(Int i) {
 
 Int BitVector::select1(Int i) {
 	i--; // internal the select result is zero-based
-	if (i >= _n1) {
-		throw std::out_of_range("Select of " + std::to_string(i) + "-th `1` when there are only " + std::to_string(_n1) + " `1`s in the vector.");
+	if (i >= n1) {
+		throw std::out_of_range("Select of " + std::to_string(i) + "-th `1` when there are only " + std::to_string(n1) + " `1`s in the vector.");
 	}
-	switch (type) {
-	case Type::BruteForce:
+	switch (_type) {
+	case DataStructureType::BruteForce:
 		return _select1BF(i);
 		break;
-	case Type::SuccinctWithCompressedArray:
+	case DataStructureType::SuccinctWithCompressedArray:
 		return _select1CA(i);
 		break;
 	default:

@@ -4,3 +4,8 @@
 #include "error_helpers.h"
 #include "random_helpers.h"
 #include "timer_helpers.h"
+
+enum class DataStructureType {
+	BruteForce,
+	SuccinctWithCompressedArray
+};

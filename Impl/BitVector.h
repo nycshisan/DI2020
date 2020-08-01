@@ -12,10 +12,10 @@ class BitVector {
 
 	Int *_d;
 
+	DataStructureType _type;
+
 	bool _verbose;
 
-	// Index
-	Int _n0 = 0, _n1 = 0;
 	// Index for brute force approach
 	Int *_r1BF = nullptr, *_s0BF = nullptr, *_s1BF = nullptr;
 	// Index for compressed array approach
@@ -26,6 +26,7 @@ class BitVector {
 	WordRAM::CompressedArray *_s1CA[2] = {};
 	Int _ssize1[2] = {}; // block number of S1 index
 	_SelectBlockIndex *_s2CA[2] = {};
+	Int _s2TCN = -1, _s2TBS = -1;
 	_SelectTreeTable *_s3CA = nullptr;
 	WordRAM::CompressedArray2D *_s4CA[2] = {};
 
@@ -43,14 +44,9 @@ class BitVector {
 	Int _select1CA(Int i); // compressed array
 
 public:
-	enum class Type {
-		BruteForce,
-		SuccinctWithCompressedArray
-	};
+	Int n0 = 0, n1 = 0;
 
-	Type type;
-
-	BitVector(Int n, Type type, bool verbose = false);
+	BitVector(Int n, DataStructureType type, bool verbose = false);
 
 	~BitVector();
 
