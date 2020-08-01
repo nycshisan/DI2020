@@ -118,7 +118,7 @@ void TestBVImpl(RandomGenerator &rg, Int length) {
 void TestBV() {
     std::cout << "Test Bit Vector" << std::endl;
     auto rg = RandomGenerator("Test Bit Vector");
-    Int length = 1752193;
+    Int length = 17599993;
     TestBVImpl(rg, length);
 }
 

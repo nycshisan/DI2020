@@ -4,7 +4,7 @@
 
 int main() {
     Playground();
-    SelfTest();
+    //SelfTest();
     //TestCA();
     TestBV();
     system("pause");

@@ -6,73 +6,99 @@
 class BitVector::_SelectTreeTable {
 public:
 	class Item {
+		WordRAM::CompressedArray *_table, *_left;
+
 	public:
 		Item(const std::vector<Int> &cbuf) {
+			Int csum = 0;
+			for (int i = 0; i < cbuf.size(); ++i) {
+				csum += cbuf[i];
+			}
+			Int wl = lgceil(cbuf.size());
+			_table = new WordRAM::CompressedArray(csum + 1, wl);
+			Int crt = 0; // current idx since last child
+			Int cid = 0; // current child idx
+			for (int i = 0; i <= csum; ++i) {
+				while (crt == cbuf[cid]) {
+					crt = 0;
+					cid++;
+				}
+				_table->set(i, cid);
+			}
+			_left = new WordRAM::CompressedArray(cbuf.size(), lgceil(csum + 1));
+			Int leftCount = 0;
+			for (int i = 0; i < cbuf.size(); ++i) {
+				_left->set(i, leftCount);
+				leftCount += cbuf[i];
+			}
+		}
 
+		~Item() {
+			destroy();
+		}
+
+		void destroy() {
+			delete _table;
+			delete _left;
 		}
 
 		Int totalSize() {
-			return 0;
+			return sizeof(*this) + _table->totalSize() + _left->totalSize();
+		}
+
+		Int getChildIdx(Int i) {
+			return _table->get(i);
+		}
+
+		Int getLeftChildrenNumber(Int i) {
+			return _left->get(i);
 		}
 	};
 private:
-	Item *_getItem(const std::vector<Int> &cbuf, int i) {
-		if (i == cbuf.size()) {
-			if (_item == nullptr) {
-				_item = new Item(cbuf);
-				delete[] _children;
-				_children = nullptr;
-			}
-			return _item;
-		} else {
-			Int c = cbuf[i];
-			if (_children[c] == nullptr) {
-				_children[c] = new _SelectTreeTable(_bs);
-			}
-			return _children[c]->_getItem(cbuf, i + 1);
-		}
-	}
-
-	Item *_item = nullptr;
-
-	_SelectTreeTable **_children = nullptr;
 	Int _bs;
+	std::unordered_map<Int, Item *> _map;
+	Item **_initedItems = nullptr;
+	Int _itemNum = 0;
 
 public:
-
-	_SelectTreeTable(Int bs) : _bs(bs) {
-		_children = new _SelectTreeTable * [_bs];
-		for (int i = 0; i < _bs; ++i) {
-			_children[i] = nullptr;
-		}
-	}
+	_SelectTreeTable(Int bs) : _bs(bs) {}
 
 	~_SelectTreeTable() {
-		if (_children != nullptr) {
-			for (int i = 0; i < _bs; ++i) {
-				delete _children[i];
-			}
-			delete[] _children;
+		for (int i = 0; i < _itemNum; ++i) {
+			delete _initedItems[i];
 		}
-		delete _item;
+		delete _initedItems;
+	}
+
+	void finishInit() {
+		_itemNum = _map.size();
+		_initedItems = new Item *[_itemNum];
+		auto it = _map.begin();
+		for (int i = 0; i < _itemNum; ++i) {
+			_initedItems[i] = it->second;
+			it++;
+		}
 	}
 
 	Int totalSize() {
 		Int size = sizeof(*this);
-		if (_children != nullptr) {
-			size += _bs * sizeof(_SelectTreeTable *);
-			for (int i = 0; i < _bs; ++i) {
-				if (_children[i] != nullptr) {
-					size += _children[i]->totalSize();
-				}
-			}
+		size += _itemNum * sizeof(Item *);
+		for (int i = 0; i < _itemNum; ++i) {
+			size += _initedItems[i]->totalSize();
 		}
-		if (_item != nullptr) size += _item->totalSize();
 		return size;
 	}
 
 	Item *getItem(const std::vector<Int> &cbuf) {
-		return _getItem(cbuf, 0);
+		Int id = 0;
+		for (int i = 0; i < cbuf.size(); ++i) {
+			assert(id < std::numeric_limits<Int>::max() / _bs - 1);
+			id *= _bs; id += cbuf[i];
+		}
+		if (_map[id] == nullptr) {
+			_map[id] = new Item(cbuf);
+		}
+		return _map[id];
 	}
 };
 
@@ -82,7 +108,7 @@ class BitVector::_SelectBlockIndex {
 	BitVector *_bv;
 
 	bool _isTree;
-	Int _h = 0;
+	Int _h = 0, _cn = 0, _bs = 0;
 
 	WordRAM::CompressedArray *_buf = nullptr;
 
@@ -111,16 +137,16 @@ public:
 			}
 		} else {
 			_isTree = true;
-			Int cn = Int(sqrt(lgn)); // children number of the tree nodes
-			Int bs = lgn / 2; // small block size
+			_cn = Int(sqrt(lgn)); // children number of the tree nodes
+			_bs = lgn / 2; // small block size
 			Int wl = lgceil(lgn * lgn); // word length of the tree
-			Int ln = divceil(length, bs); // number of leaves
-			_h = lgceil(ln, cn) + 1;
+			Int ln = divceil(length, _bs); // number of leaves
+			_h = lgceil(ln, _cn) + 1;
 
 			_ci = new WordRAM::CompressedArray(_h - 2, wl);
-			_ci->set(0, bs);
+			_ci->set(0, _bs);
 			for (Int i = 1; i < _h - 2; ++i) {
-				_ci->set(i, _ci->get(i - 1) * cn);
+				_ci->set(i, _ci->get(i - 1) * _cn);
 			}
 
 			_items = new _SelectTreeTable::Item **[_h - 1];
@@ -134,13 +160,13 @@ public:
 				if (bv->getBit(i) == bit) {
 					bc++;
 				}
-				if ((i - begin + 1) % bs == 0) {
+				if ((i - begin + 1) % _bs == 0) {
 					_buf[_h - 1].set(bid, bc);
 					bid++;
 					bc = 0;
 				}
 			}
-			if (length % bs != 0) {
+			if (length % _bs != 0) {
 				_buf[_h - 1].set(bid, bc); // the last block
 				bid++;
 			}
@@ -148,7 +174,8 @@ public:
 			std::vector<Int> cbuf; // children buffer for getting s3 item
 			// Build non-leaf nodes
 			for (int r = int(_h - 2); r >= 0; --r) {
-				Int w = divceil(_buf[r + 1].size(), cn); // current row width
+				cbuf.clear();
+				Int w = divceil(_buf[r + 1].size(), _cn); // current row width
 				_items[r] = new _SelectTreeTable::Item * [w];
 				_itemNum += w;
 				new (&_buf[r]) WordRAM::CompressedArray(w, wl);
@@ -157,7 +184,7 @@ public:
 					auto c = _buf[r + 1].get(i);
 					bc += c;
 					cbuf.emplace_back(c);
-					if ((i + 1) % cn == 0) {
+					if ((i + 1) % _cn == 0) {
 						_buf[r].set(bid, bc);
 						_items[r][bid] = s3table.getItem(cbuf);
 						bid++;
@@ -165,7 +192,7 @@ public:
 						cbuf.clear();
 					}
 				}
-				if (_buf[r + 1].size() % cn != 0) {
+				if (_buf[r + 1].size() % _cn != 0) {
 					_buf[r].set(bid, bc); // the last block
 					bid++;
 				}
@@ -202,6 +229,14 @@ public:
 	Int select(Int i, bool bit) {
 		if (_isTree) {
 			Int io = 0; // idx offset
+			Int bid = 0; // small block idx
+			for (int r = 0; r < _h - 1; ++r) {
+				auto item = _items[r][bid];
+				Int cid = item->getChildIdx(i);
+				bid = bid * _cn + cid;
+				i -= item->getLeftChildrenNumber(cid);
+			}
+			return bid * _bs;
 		} else {
 			return _buf->get(i);
 		}
@@ -379,6 +414,8 @@ void BitVector::_buildIndexCA() {
 	}
 	assert(bz == _ssize1[0]);
 	assert(bo == _ssize1[1]);
+
+	_s3CA->finishInit();
 
 	// Build s4
 	Int s4bs = lgn / 2; // block size for s4 index
