@@ -572,3 +572,4 @@ MigrationBackup/
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks,windows,c++,visualstudio,visualstudiocode
 TestBVResult.txt
 TestCAResult.txt
+Imgs/*.png

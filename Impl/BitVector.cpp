@@ -75,7 +75,7 @@ public:
 		for (int i = 0; i < _itemNum; ++i) {
 			delete _initedItems[i];
 		}
-		delete _initedItems;
+		delete[] _initedItems;
 	}
 
 	void finishInit() {
@@ -147,7 +147,6 @@ public:
 			_isTree = true;
 			Int cn = _bv->_s2TCN; // children number of the tree nodes
 			Int bs = _bv->_s2TBS; // small block size
-			Int wl = lgceil(lgn * lgn + 1); // word length of the tree
 			Int ln = divceil(length, bs); // number of leaves
 			_h = lgceil(ln, cn) + 1;
 
@@ -205,8 +204,6 @@ public:
 				assert(bid == w);
 				if (r == 0) {
 					assert(_buf[r].size() == 1);
-				} else {
-					assert(_buf[r].size() > 1);
 				}
 			}
 		}
@@ -598,7 +595,7 @@ void BitVector::Test() {
 		}
 	}
 
-	Int testLength = 139517;
+	Int testLength = 13719;
 	BitVector bv1(testLength, DataStructureType::BruteForce), bv2(testLength, DataStructureType::SuccinctWithCompressedArray);
 	bv1.randomize(); bv2.randomize();
 	bv1.buildIndex(); bv2.buildIndex();

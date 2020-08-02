@@ -80,7 +80,7 @@ void TestCA() {
     std::ofstream logger("../TestCAResult.txt");
     assert(logger.good());
 
-    std::vector<Int> lengths = { 100, 200, 500 };
+    std::vector<Int> lengths = { 100, 200, 300, 400, 500, 600, 700, 800, 900 };
     Int lengthBase = 1;
     Int shortWordSize = 7, longWordSize = 47;
 
@@ -195,7 +195,7 @@ void TestBV() {
     std::ofstream logger("../TestBVResult.txt");
     assert(logger.good());
 
-    std::vector<Int> lengths = { 1000, 2000, 5000 };
+    std::vector<Int> lengths = { 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000 };
     Int lengthBase = 1;
 
     std::cout << "Test Bit Vector:" << std::endl;
