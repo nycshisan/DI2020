@@ -10,7 +10,7 @@ void SelfTest() {
     BitVector::Test();
 }
 
-void _TestCAImpl(RandomGenerator &rg, Int length, Int wordSize) {
+void _TestCAImpl(RandomGenerator &rg, Int length, Int wordSize, std::ostream *logger = nullptr) {
     rg.reseed();
     Int *buf = new Int[length];
     Int maxValue = (Int(1) << wordSize) - 1;
@@ -21,14 +21,22 @@ void _TestCAImpl(RandomGenerator &rg, Int length, Int wordSize) {
     Int *la = (Int *)malloc(length * sizeof(Int));
     WordRAM::CompressedArray ca(length, wordSize);
 
+    if (logger) {
+        *logger << length << " " << wordSize << " ";
+    }
+
     // Test space
-    std::cout << "Storing `" << length << "` length of `" << wordSize << "` bit data." << std::endl;
-    std::cout << "Uncompressed size: " << length * sizeof(Int) << std::endl;
-    std::cout << "Compressed size: " << ca.totalSize() << std::endl;
+    if (logger) {
+        *logger << length * sizeof(Int) << " " << ca.totalSize() << " ";
+    } else {
+        std::cout << "Storing `" << length << "` length of `" << wordSize << "` bit data." << std::endl;
+        std::cout << "Uncompressed size: " << length * sizeof(Int) << std::endl;
+        std::cout << "Compressed size: " << ca.totalSize() << std::endl;
+    }
 
     // Test time
-    MillisecondsTimer laTimer("Uncompressed Array Timer"), caTimer("Compressed Array Timer");
-    std::cout << "Test reading:" << std::endl;
+    NanosecondsTimer laTimer("Uncompressed Array Timer"), caTimer("Compressed Array Timer");
+    if (logger == nullptr) std::cout << "Test reading:" << std::endl;
     for (int i = 0; i < length; ++i) {
         auto r = rd(rg);
         Int x;
@@ -39,9 +47,15 @@ void _TestCAImpl(RandomGenerator &rg, Int length, Int wordSize) {
         x = ca.get(r);
         caTimer.end();
     }
-    laTimer.print();
-    caTimer.print();
-    std::cout << "Test writing:" << std::endl;
+    if (logger) {
+        *logger << laTimer.durationAvg(length) << " " << caTimer.durationAvg(length) << " ";
+    } else {
+        laTimer.printAvg(length);
+        caTimer.printAvg(length);
+    }
+    laTimer.clear();
+    caTimer.clear();
+    if (logger == nullptr) std::cout << "Test writing:" << std::endl;
     for (int i = 0; i < length; ++i) {
         auto v = vd(rg), r = rd(rg);
         laTimer.start();
@@ -51,55 +65,80 @@ void _TestCAImpl(RandomGenerator &rg, Int length, Int wordSize) {
         ca.set(r, v);
         caTimer.end();
     }
-    laTimer.print();
-    caTimer.print();
+    if (logger) {
+        *logger << laTimer.durationAvg(length) << " " << caTimer.durationAvg(length) << std::endl;
+    } else {
+        laTimer.printAvg(length);
+        caTimer.printAvg(length);
+    }
 
-    delete buf;
+    delete[] buf;
     free(la);
 }
 
 void TestCA() {
-    std::cout << "Test Compressed Array" << std::endl;
+    std::ofstream logger("../TestCAResult.txt");
+    assert(logger.good());
+
+    std::vector<Int> lengths = { 100, 200, 500 };
+    Int lengthBase = 1;
+    Int shortWordSize = 7, longWordSize = 47;
+
+    std::cout << "Test Compressed Array:" << std::endl;
     auto rg = RandomGenerator("Test Compressed Array");
-    Int length = 1391729, wordSize;
-    // Test short word size
-    std::cout << "Test short word size:" << std::endl;
-    wordSize = 7;
-    _TestCAImpl(rg, length, wordSize);
-    std::cout << std::endl;
-    // Test long word size
-    std::cout << "Test long word size:" << std::endl;
-    wordSize = 47;
-    _TestCAImpl(rg, length, wordSize);
-    std::cout << std::endl;
+    for (int i = 0; i < 5; ++i) {
+        for (int j = 0; j < lengths.size(); ++j) {
+            Int length = lengths[j] * lengthBase;
+            std::cout << "Test size = " << length << std::endl;
+            _TestCAImpl(rg, length, shortWordSize, &logger);
+            _TestCAImpl(rg, length, longWordSize, &logger);
+        }
+        lengthBase *= 10;
+    }
 
     std::cout << std::endl;
 }
 
-void TestBVImpl(RandomGenerator &rg, Int length) {
+void _TestBVImpl(RandomGenerator &rg, Int length, std::ostream *logger = nullptr) {
     rg.reseed();
     BitVector bvBF(length, DataStructureType::BruteForce), bvCA(length, DataStructureType::SuccinctWithCompressedArray);
     bvBF.randomize(); bvCA.randomize();
 
-    std::cout << "Test build index speed for `" << length << "` length:" << std::endl;
-    MillisecondsTimer bfTimer("Build brute force index"), caTimer("Build succinct index");
-    bfTimer.start();
+    if (logger) {
+        *logger << length << " ";
+    } else {
+        std::cout << "Test build index speed for `" << length << "` length:" << std::endl;
+    }
+    MicrosecondsTimer bfIndexTimer("Build brute force index"), caIndexTimer("Build succinct index");
+    bfIndexTimer.start();
     bvBF.buildIndex();
-    bfTimer.end();
-    bfTimer.print();
-    caTimer.start();
+    bfIndexTimer.end();
+    if (logger) {
+        *logger << bfIndexTimer.duration() << " ";
+    } else {
+        bfIndexTimer.print();
+    }
+    caIndexTimer.start();
     bvCA.buildIndex();
-    caTimer.end();
-    caTimer.print();
+    caIndexTimer.end();
+    if (logger) {
+        *logger << caIndexTimer.duration() << " ";
+    } else {
+        caIndexTimer.print();
+    }
 
     // Test space
-    std::cout << "Storing `" << length << "` bits data." << std::endl;
-    std::cout << "Uncompressed size: " << bvBF.totalSize() << std::endl;
-    std::cout << "Compressed size: " << bvCA.totalSize() << std::endl;
+    if (logger) {
+        *logger << bvBF.totalSize() << " " << bvCA.totalSize() << " ";
+    } else {
+        std::cout << "Storing `" << length << "` bits data." << std::endl;
+        std::cout << "Uncompressed size: " << bvBF.totalSize() << std::endl;
+        std::cout << "Compressed size: " << bvCA.totalSize() << std::endl;
+    }
 
+    NanosecondsTimer bfTimer("Brute force ranking"), caTimer("Succinct ranking");
     // Test rank speed
-    std::cout << "Test rank speed:" << std::endl;
-    bfTimer.name = "Brute force ranking"; caTimer.name = "Succinct ranking";
+    if (logger == nullptr) std::cout << "Test rank speed:" << std::endl;
     bfTimer.clear(); caTimer.clear();
     for (int i = 0; i < length; ++i) {
         bfTimer.start();
@@ -112,11 +151,17 @@ void TestBVImpl(RandomGenerator &rg, Int length) {
         caTimer.end();
         assert(r0ca == r0bf && r1ca == r1bf);
     }
-    bfTimer.print(); caTimer.print();
+    if (logger) {
+        *logger << bfTimer.durationAvg(length) << " ";
+        *logger << caTimer.durationAvg(length) << " ";
+    } else {
+        bfTimer.printAvg(length);
+        caTimer.printAvg(length);
+    }
 
     // Test select speed
     assert(bvBF.n0 == bvCA.n0 && bvBF.n1 == bvCA.n1);
-    std::cout << "Test select speed:" << std::endl;
+    if (logger == nullptr) std::cout << "Test select speed:" << std::endl;
     bfTimer.name = "Brute force selecting"; caTimer.name = "Succinct selecting";
     bfTimer.clear(); caTimer.clear();
     for (int i = 1; i <= bvBF.n0; ++i) {
@@ -137,14 +182,35 @@ void TestBVImpl(RandomGenerator &rg, Int length) {
         caTimer.end();
         assert(s1ca == s1bf);
     }
-    bfTimer.print(); caTimer.print();
+    if (logger) {
+        *logger << bfTimer.durationAvg(bvBF.n0 + bvBF.n1) << " ";
+        *logger << caTimer.durationAvg(bvCA.n0 + bvCA.n1) << std::endl;
+    } else {
+        bfTimer.printAvg(bvBF.n0 + bvBF.n1);
+        caTimer.printAvg(bvCA.n0 + bvCA.n1);
+    }
 }
 
 void TestBV() {
-    std::cout << "Test Bit Vector" << std::endl;
+    std::ofstream logger("../TestBVResult.txt");
+    assert(logger.good());
+
+    std::vector<Int> lengths = { 1000, 2000, 5000 };
+    Int lengthBase = 1;
+
+    std::cout << "Test Bit Vector:" << std::endl;
     auto rg = RandomGenerator("Test Bit Vector");
-    Int length = 3013;
-    TestBVImpl(rg, length);
+    
+    for (int i = 0; i < 5; ++i) {
+        for (int j = 0; j < lengths.size(); ++j) {
+            Int length = lengths[j] * lengthBase;
+            std::cout << "Test size = " << length << std::endl;
+            _TestBVImpl(rg, length, &logger);
+        }
+        lengthBase *= 10;
+    }
+    
+    std::cout << std::endl;
 }
 
 void Playground() {

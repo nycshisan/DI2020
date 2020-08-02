@@ -35,9 +35,19 @@ public:
 		return convertedDuration.count();
 	}
 
+	typename TimeUnit::rep durationAvg(typename TimeUnit::rep loop) {
+		auto convertedDuration = std::chrono::duration_cast<TimeUnit>(_duration / loop);
+		return convertedDuration.count();
+	}
+
 	void print() {
 		auto convertedDuration = std::chrono::duration_cast<TimeUnit>(_duration);
 		std::cout << name << ": " << convertedDuration.count() << _TimeUnitStr << std::endl;
+	}
+
+	void printAvg(typename TimeUnit::rep loop) {
+		auto convertedDuration = std::chrono::duration_cast<TimeUnit>(_duration / loop);
+		std::cout << name << " (Avg.): " << convertedDuration.count() << _TimeUnitStr << std::endl;
 	}
 
 	void sleep(typename TimeUnit x) {
@@ -45,6 +55,10 @@ public:
 	}
 };
 
+static const char NanosecondsTimeUnitStr[] = "ns";
+typedef Timer<std::chrono::nanoseconds, NanosecondsTimeUnitStr> NanosecondsTimer;
+static const char MicrosecondsTimeUnitStr[] = "us";
+typedef Timer<std::chrono::microseconds, MicrosecondsTimeUnitStr> MicrosecondsTimer;
 static const char MillisecondsTimeUnitStr[] = "ms";
 typedef Timer<std::chrono::milliseconds, MillisecondsTimeUnitStr> MillisecondsTimer;
 static const char SecondsTimeUnitStr[] = "s";
